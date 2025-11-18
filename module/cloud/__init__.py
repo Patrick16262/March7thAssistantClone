@@ -78,6 +78,7 @@ class CloudGameManager:
         if headless:
             options.add_argument("--headless=new")
 
+        options.add_argument("--lang=zh-CN") 
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--no-sandbox")
