@@ -97,10 +97,44 @@ def run_notify_action():
     notif.notify(cfg.notify_template['TestMessage'], "./assets/app/images/March7th.jpg")
     input("按回车键关闭窗口. . .")
     sys.exit(0)
+    
+def get_disclaimer_text():
+    RED = "\033[31m"
+    YELLOW = "\033[33m"
+    RESET = "\033[0m"
+
+    parts = [
+        f"{RESET}===================================================={RESET}",
+        f"{RESET}====================  免责声明  ===================={RESET}",
+        f"{RESET}====================================================\n{RESET}",
+
+        f"{RED}本程序为完全免费、开源项目。{RESET}",
+        f"{RESET}如果你为本程序付了钱，请立即退款！{RESET}\n",
+
+        f"{RESET}本项目因倒卖行为受到严重威胁，请勿支持倒卖！{RESET}",
+        f"{RESET}在闲鱼等平台，有人以 4000+ 的价格倒卖本软件。{RESET}",
+        f"{RESET}你付给倒卖者的每一分钱都会让开源自动化更艰难。{RESET}",
+        f"{RED}如已购买，请凭此提示截图要求退款，并举报该商家。\n{RESET}",
+
+        f"{RESET}本软件未授权任何个人或机构以任何方式出售。{RESET}",
+        f"{RESET}本软件仅用于学习与交流，不保证任何结果。{RESET}",
+        f"{RESET}使用本软件产生的一切后果均由使用者自行承担。\n{RESET}",
+
+        f"{RESET}===================================================\n{RESET}",
+
+        f"{YELLOW}根据米哈游《崩坏：星穹铁道》公平游戏宣言：{RESET}",
+        f"{RESET}- \"严禁使用外挂、加速器、脚本等破坏公平性的第三方工具。\"{RESET}",
+        f"{RESET}- \"一经发现，官方将根据违规程度采取扣除收益、冻结账号、永久封禁等措施。\"{RESET}",
+
+        f"{RESET}\n==================================================={RESET}",
+    ]
+
+    return "\n".join(parts)
 
 
 def main(action=None):
     first_run()
+    log.info("\n" + get_disclaimer_text())
     retry_times = 0
     limit = int(cfg.on_failure_retry_limit)
 
