@@ -143,9 +143,6 @@ def start_game():
                     raise  # 如果是最后一次尝试，则重新抛出异常
 
     def start_cloud_game():
-        global cloud_game
-        if not cloud_game:
-            cloud_game = CloudGameManager()
         cloud_game.start_game()
         
         if not wait_until(lambda: check_and_click_enter_cloud(), 600):

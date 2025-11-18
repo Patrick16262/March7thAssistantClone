@@ -232,6 +232,7 @@ class CloudGameManager:
         
         for attempt in range(self.MAX_RETRIES):
             try:
+                self._get_game_page()
                 # 自动检测登录状态
                 while not self._check_login():
                     log.info("未登录")

@@ -82,6 +82,9 @@ class Fight:
     @staticmethod
     def start():
         log.hr("准备锄大地", 0)
+        if cfg.get_value("game_run_mode") == "cloud":
+            log.error("云崩铁暂不支持通过三月七小助手启动锄大地")
+            return False
 
         game = StarRailController(cfg.game_path, cfg.game_process_name, cfg.game_title_name, 'UnityWndClass', log)
         game.check_resolution(1920, 1080)

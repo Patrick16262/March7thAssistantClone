@@ -198,6 +198,9 @@ class Universe:
     @staticmethod
     def start(nums=cfg.universe_count, save=True, category=cfg.universe_category):
         log.hr("准备模拟宇宙", 0)
+        if cfg.get_value("game_run_mode") == "cloud":
+            log.error("云崩铁暂不支持通过三月七小助手启动模拟宇宙")
+            return False
 
         if Universe.before_start():
 
