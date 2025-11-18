@@ -4,12 +4,12 @@ import sys
 os.chdir(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False)else os.path.dirname(os.path.abspath(__file__)))
 
 import pyuac
-if not pyuac.isUserAdmin():
-    try:
-        pyuac.runAsAdmin(False)
-        sys.exit(0)
-    except Exception:
-        sys.exit(1)
+# if not pyuac.isUserAdmin():
+#     try:
+#         pyuac.runAsAdmin(False)
+#         sys.exit(0)
+#     except Exception:
+#         sys.exit(1)
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication

@@ -32,10 +32,21 @@ pypi_mirror_urls:
   - https://pypi.org/simple/ # 设置 PyPI 镜像列表，用于加速 Python 包的下载。
 
 # 游戏设置
+game_run_mode: local # 游戏运行模式，可选值："local"（本地）, "cloud"（云崩铁）
+
+# 本地运行配置
 game_title_name: 崩坏：星穹铁道 # 游戏窗口标题。
 game_process_name: StarRail # 游戏进程名。
 game_path: C:\Program Files\Star Rail\Game\StarRail.exe # 游戏安装路径。
 script_path: C:\Path\to\your\Script.bat
+
+# 云崩铁运行配置
+max_queue_time: 600 # 最大排队时间（秒）
+browser_type: edge # 云崩铁浏览器类型，可选值：["edge", "chrome"]。
+browser_headless_mode: false # 是否启用无界面模式。
+browser_use_remote: false # 是否使用远程浏览器。
+browser_remote_address: http://localhost:4444/wd/hub # 远程浏览器地址。
+
 # 副本设置
 instance_type: 拟造花萼（金） # 设置副本类型，可选值：拟造花萼（金）、拟造花萼（赤）、凝滞虚影、侵蚀隧洞、饰品提取。
 calyx_golden_preference: Jarilo-VI # 设置拟造花萼（金）偏好地区，可选值："雅利洛-VI"（Jarilo-VI）、仙舟「罗浮」（XianzhouLuofu）、匹诺康尼（Penacony）。

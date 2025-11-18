@@ -4,12 +4,14 @@ import sys
 os.chdir(os.path.dirname(sys.executable) if getattr(sys, 'frozen', False)else os.path.dirname(os.path.abspath(__file__)))
 
 import pyuac
-if not pyuac.isUserAdmin():
-    try:
-        pyuac.runAsAdmin(False)
-        sys.exit(0)
-    except Exception:
-        sys.exit(1)
+
+#TODO DEBUG
+# if not pyuac.isUserAdmin():
+#     try:
+#         pyuac.runAsAdmin(False)
+#         sys.exit(0)
+#     except Exception:
+#         sys.exit(1)
 
 import atexit
 import base64
@@ -18,6 +20,7 @@ from module.config import cfg
 from module.logger import log
 from module.notification import notif
 from module.ocr import ocr
+from module.cloud import cloud_game
 
 import tasks.game as game
 import tasks.reward as reward
@@ -148,6 +151,8 @@ if __name__ == "__main__":
     except Exception as e:
         log.error(cfg.notify_template['ErrorOccurred'].format(error=e))
         notif.notify(cfg.notify_template['ErrorOccurred'].format(error=e))
+        import traceback
+        traceback.print_exc() #TODO debug
         if not cfg.exit_after_failure:
             input("按回车键关闭窗口. . .")
         sys.exit(1)

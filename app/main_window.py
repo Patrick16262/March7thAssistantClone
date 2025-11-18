@@ -21,6 +21,7 @@ from .tools.check_theme_change import checkThemeChange
 from .tools.announcement import checkAnnouncement
 from .tools.disclaimer import disclaimer
 
+from module.cloud import cloud_game
 from module.config import cfg
 from utils.gamecontroller import GameController
 import base64
@@ -123,8 +124,31 @@ class MainWindow(MSFluentWindow):
         super().closeEvent(e)
 
     def startGame(self):
-        game = GameController(cfg.game_path, cfg.game_process_name, cfg.game_title_name, 'UnityWndClass')
         try:
+            if cfg.get_value("game_run_mode") == "cloud":
+                if cloud_game.start_game():
+                    InfoBar.success(
+                        title=self.tr('启动云游戏成功(＾∀＾●)'),
+                        content="",
+                        orient=Qt.Horizontal,
+                        isClosable=True,
+                        position=InfoBarPosition.TOP,
+                        duration=2000,
+                        parent=self
+                    )
+                else:
+                    InfoBar.warning(
+                    title=self.tr('云游戏启动失败 (╥╯﹏╰╥)'),
+                    # content="请在“设置”-->“程序”中配置",
+                    orient=Qt.Horizontal,
+                    isClosable=True,
+                    position=InfoBarPosition.TOP,
+                    duration=5000,
+                    parent=self
+                )
+                return
+            
+            game = GameController(cfg.game_path, cfg.game_process_name, cfg.game_title_name, 'UnityWndClass')
             if game.start_game():
                 InfoBar.success(
                     title=self.tr('启动成功(＾∀＾●)'),

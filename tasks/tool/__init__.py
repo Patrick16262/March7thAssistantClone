@@ -22,10 +22,11 @@ class ToolManager:
 
     def run_screenshot(self):
         """捕获图像"""
-        game = GameController(cfg.game_path, cfg.game_process_name, cfg.game_title_name, 'UnityWndClass', log)
-        if not game.switch_to_game():
-            log.error("游戏尚未启动")
-        time.sleep(0.5)  # 等待窗口切换
+        if not cfg.get_value("game_run_mode") == "cloud":
+            game = GameController(cfg.game_path, cfg.game_process_name, cfg.game_title_name, 'UnityWndClass', log)
+            if not game.switch_to_game():
+                log.error("游戏尚未启动")
+            time.sleep(0.5)  # 等待窗口切换
 
         result = Screenshot.take_screenshot(cfg.game_title_name)
         if result:

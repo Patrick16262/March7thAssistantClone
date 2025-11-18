@@ -3,12 +3,15 @@ import math
 import cv2
 import numpy as np
 
-from .input import Input
+from .local_input import LocalInput
+from .browser_input import BrowserInput
 from .screenshot import Screenshot
 from utils.logger.logger import Logger
 from typing import Optional
 from utils.singleton import SingletonMeta
 from utils.image_utils import ImageUtils
+from module.cloud import cloud_game
+from module.config import cfg
 
 from module.ocr import ocr
 
@@ -33,7 +36,10 @@ class Automation(metaclass=SingletonMeta):
         """
         初始化输入处理器，将输入操作如点击、移动等绑定至实例变量。
         """
-        self.input_handler = Input(self.logger)
+        if cfg.get_value("game_run_mode") == "cloud":
+            self.input_handler = BrowserInput(logger=self.logger, cloud_game=cloud_game)
+        else:
+            self.input_handler = LocalInput(self.logger)
         self.mouse_click = self.input_handler.mouse_click
         self.mouse_down = self.input_handler.mouse_down
         self.mouse_up = self.input_handler.mouse_up
@@ -248,6 +254,7 @@ class Automation(metaclass=SingletonMeta):
         """执行OCR识别，并更新OCR结果列表。如果未识别到文字，保留ocr_result为一个空列表。"""
         try:
             self.ocr_result = ocr.recognize_multi_lines(np.array(self.screenshot))
+            print("ocr result: ", self.ocr_result) #TODO debug only
             if not self.ocr_result:
                 self.logger.debug(f"未识别出任何文字")
                 self.ocr_result = []
@@ -456,6 +463,7 @@ class Automation(metaclass=SingletonMeta):
         如果找到元素并点击成功，则返回True；否则返回False。
         """
         coordinates = self.find_element(target, find_type, threshold, max_retries, crop, take_screenshot, relative, scale_range, include, need_ocr, source, source_type, pixel_bgr, position, retry_delay)
+        print("coordinates = ", coordinates) #debug only
         if coordinates:
             return self.click_element_with_pos(coordinates, offset, action)
         return False
