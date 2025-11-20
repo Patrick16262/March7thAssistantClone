@@ -143,7 +143,7 @@ def start_game():
 
     for retry in range(MAX_RETRY):
         try:
-            if cfg.get_value("game_run_mode") == "cloud":
+            if cfg.cloud_game_enable:
                 start_cloud_game()
             else:
                 start_local_game()
@@ -151,7 +151,7 @@ def start_game():
         except Exception as e:
             log.error(f"尝试启动游戏时发生错误：{e}")
             # 确保在重试前停止游戏
-            if cfg.get_value("game_run_mode") == "cloud":
+            if cfg.cloud_game_enable:
                 cloud_game.stop_game()
             else:
                 starrail.stop_game() 

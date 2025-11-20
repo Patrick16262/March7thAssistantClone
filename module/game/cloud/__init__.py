@@ -85,7 +85,7 @@ class CloudGameController(GameControllerBase):
 
         options.add_argument("--lang=zh-CN")
         options.add_argument("--log-level=3")
-        options.add_argument(f"--force-device-scale-factor={self.cfg.browser_scale_factor}")
+        options.add_argument(f"--force-device-scale-factor={float(self.cfg.browser_scale_factor)}")
         options.add_argument(f"--app={self.GAME_URL}")
         if self.cfg.cloud_game_full_screen and not self.cfg.browser_headless_mode:
             options.add_argument("--start-fullscreen")
@@ -143,7 +143,7 @@ class CloudGameController(GameControllerBase):
         client_config["fabPosition"]["x"] = self.cfg.cloud_game_fab_pos_x
         client_config["fabPosition"]["y"] = self.cfg.cloud_game_fab_pos_y
         client_config["showGameStatBar"] = self.cfg.cloud_game_show_status_bar
-        client_config["gameStatBarType"] = self.cfg.cloud_game_status_bar
+        client_config["gameStatBarType"] = self.cfg.cloud_game_status_bar_type
         data["clgm_web_app_client_store_config_hkrpg_cn"] = json.dumps(client_config)
 
         # 注入浏览器
@@ -335,7 +335,7 @@ class CloudGameController(GameControllerBase):
                 sleep(0.5)
                 self._click_enter_game()
                 sleep(1)
-                self._wait_in_queue(int(self.cfg.cloud_game_max_queue_time))
+                self._wait_in_queue(int(self.cfg.cloud_game_max_queue_time) * 60)
                 self.confirm_viewport_resolution() # 将浏览器内部分辨率设置为 1920x1080
                 
                 self.log_info("云游戏启动成功")
@@ -360,7 +360,7 @@ class CloudGameController(GameControllerBase):
         设置网页分辨率大小
         
         如果云崩铁画面超出浏览器显示范围，页面会反复抽搐，但不影响脚本正常运行
-        可以将 browser_scale_factor 调小来解决这个问题
+        可以将 cfg.browser_scale_factor 调小来解决这个问题
         """
         self.driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
             "width": 1920,

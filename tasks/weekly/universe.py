@@ -198,7 +198,7 @@ class Universe:
     @staticmethod
     def start(nums=cfg.universe_count, save=True, category=cfg.universe_category):
         log.hr("准备模拟宇宙", 0)
-        if cfg.get_value("game_run_mode") == "cloud" and cfg.browser_headless_mode:
+        if cfg.cloud_game_enable and cfg.browser_headless_mode:
             log.error("模拟宇宙不支持无界面模式运行")
             return False
         

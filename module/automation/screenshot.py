@@ -9,21 +9,21 @@ from module.game import cloud_game
 class Screenshot:
     @staticmethod
     def is_application_fullscreen(window):
-        if cfg.get_value("game_run_mode") == "cloud":
+        if cfg.cloud_game_enable:
             return True
         screen_width, screen_height = pyautogui.size()
         return (window.width, window.height) == (screen_width, screen_height)
 
     @staticmethod
     def get_window_real_resolution(window):
-        if cfg.get_value("game_run_mode") == "cloud":
+        if cfg.cloud_game_enable:
             return 1920, 1080
         left, top, right, bottom = win32gui.GetClientRect(window._hWnd)
         return right - left, bottom - top
 
     @staticmethod
     def get_window_region(window):
-        if cfg.get_value("game_run_mode") == "cloud":
+        if cfg.cloud_game_enable:
             return (0, 0, 1920, 1080)
         if Screenshot.is_application_fullscreen(window):
             return (window.left, window.top, window.width, window.height)
@@ -35,7 +35,7 @@ class Screenshot:
 
     @staticmethod
     def get_window(title):
-        if cfg.get_value("game_run_mode") == "cloud":
+        if cfg.cloud_game_enable:
             return False #TODO
         windows = pyautogui.getWindowsWithTitle(title)
         if windows:
@@ -45,7 +45,7 @@ class Screenshot:
 
     @staticmethod
     def get_main_screen_location():
-        if cfg.get_value("game_run_mode") == "cloud":
+        if cfg.cloud_game_enable:
             return None, None
         rects = getDisplayRects()
         min_x = min([rect[0] for rect in rects])
@@ -54,7 +54,7 @@ class Screenshot:
     
     @staticmethod
     def take_screenshot(title, crop=(0, 0, 1, 1)):
-        if cfg.get_value("game_run_mode") == "cloud":
+        if cfg.cloud_game_enable:
             png = cloud_game.take_screenshot()
             screenshot = Image.open(BytesIO(png))
             width, height = screenshot.size
