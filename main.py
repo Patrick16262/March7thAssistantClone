@@ -18,6 +18,7 @@ from module.config import cfg
 from module.logger import log
 from module.notification import notif
 from module.ocr import ocr
+from module.game import cloud_game
 
 import tasks.game as game
 import tasks.reward as reward
@@ -144,8 +145,10 @@ def main(action=None):
 
 # 程序结束时的处理器
 def exit_handler():
-    """注册程序退出时的处理函数，用于清理OCR资源."""
-    ocr.exit_ocr()
+    """注册程序退出时的处理函数."""
+    ocr.exit_ocr() # 清理OCR资源
+    if cfg.cloud_game_enable and cfg.browser_headless_mode:
+        cloud_game.stop_game() # 退出云游戏，防止孤儿进程
 
 
 if __name__ == "__main__":

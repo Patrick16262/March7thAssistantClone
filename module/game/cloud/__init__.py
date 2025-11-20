@@ -1,6 +1,7 @@
 import os
 import json
 from time import sleep
+import psutil
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.edge.options import Options as EdgeOptions
@@ -20,6 +21,7 @@ from utils.encryption import wdp_encrypt, wdp_decrypt
 class CloudGameController(GameControllerBase):
     COOKIE_PATH = "cookies.encrypted"
     GAME_URL = "https://sr.mihoyo.com/cloud"
+    BROWSER_TAG = "--march-7th-assistant-sr-cloud-game" # 自定义浏览器参数作为标识，用于识别哪些浏览器进程属于三月七小助手
     MAX_RETRIES = 3  # 网络异常重试次数
 
     def __init__(self, cfg: Config, logger: Logger):
@@ -83,6 +85,7 @@ class CloudGameController(GameControllerBase):
         if headless:
             options.add_argument("--headless=new")
 
+        options.add_argument(self.BROWSER_TAG)
         options.add_argument("--lang=zh-CN")
         options.add_argument("--log-level=3")
         options.add_argument(f"--force-device-scale-factor={float(self.cfg.browser_scale_factor)}")
@@ -271,6 +274,15 @@ class CloudGameController(GameControllerBase):
             self.log_error("等待排队超时")
         except Exception as e:
             self.log_error(f"等待排队异常: {e}")
+    
+    def close_all_m7a_browser(self):
+        """关闭所有由小助手打开的浏览器"""
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            if proc.info['name'] in ('chrome.exe', 'msedge.exe'):
+                cmdline = proc.info['cmdline']
+                if self.BROWSER_TAG in cmdline:
+                    self.log_debug(f"关闭浏览器: PID={proc.pid}，cmdline={cmdline}")
+                    proc.terminate()
             
     def _inject_scripts(self):
         if self.scripts_to_inject:
@@ -302,10 +314,8 @@ class CloudGameController(GameControllerBase):
     
         for attempt in range(self.MAX_RETRIES):
             try:
-                if not self.driver:
-                    self._create_browser(headless=self.cfg.browser_headless_mode)
-
-                self._get_game_page()
+                self.stop_game()
+                self._create_browser(headless=self.cfg.browser_headless_mode)
                 
                 # 检测登录状态
                 while not self._check_login():
@@ -394,11 +404,16 @@ class CloudGameController(GameControllerBase):
         if self.driver:
             try:
                 self.driver.quit()
-                return True
             except Exception as e:
-                self.log_warning(f"退出浏览器异常: {e}")
+                self.log_error(f"退出浏览器异常: {e}")
             self.driver = None
+            
+        # 清理所有未正常关闭的浏览器
+        try:
+            self.close_all_m7a_browser()
+        except Exception as e:
+            self.log_error(f"无法关闭异常浏览器: {e}")
             return False
-        else:
-            return True
+        
+        return True
             
