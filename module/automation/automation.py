@@ -3,13 +3,15 @@ import math
 import cv2
 import numpy as np
 
-from .input import Input
+from .local_input import LocalInput
+from .cdp_input import CdpInput
 from .screenshot import Screenshot
 from utils.logger.logger import Logger
 from typing import Optional
 from utils.singleton import SingletonMeta
 from utils.image_utils import ImageUtils
-
+from module.game.cloud import CloudGameController
+from module.game import get_game_controller
 from module.ocr import ocr
 
 
@@ -33,7 +35,11 @@ class Automation(metaclass=SingletonMeta):
         """
         初始化输入处理器，将输入操作如点击、移动等绑定至实例变量。
         """
-        self.input_handler = Input(self.logger)
+        game = get_game_controller()
+        if isinstance(game, CloudGameController):
+            self.input_handler = CdpInput(logger=self.logger, cloud_game=game)
+        else:
+            self.input_handler = LocalInput(self.logger)
         self.mouse_click = self.input_handler.mouse_click
         self.mouse_down = self.input_handler.mouse_down
         self.mouse_up = self.input_handler.mouse_up

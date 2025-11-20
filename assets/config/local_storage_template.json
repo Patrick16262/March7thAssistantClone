@@ -1,0 +1,4 @@
+{
+    "clgm_web_app_settings_hkrpg_cn": "{\"kickoutMinMigratedFromUseConfig\":true,\"showGameMenuSettingGuideMigratedFromUseConfig\":true,\"showGameMenuSettingGuide\":false,\"gameLang\":\"zh-CN\",\"videoModeSmoothFirstToggleConfirmed\":true,\"videoMode\":1}",
+    "clgm_web_app_client_store_config_hkrpg_cn": "{\"showGameMenuGuide\":false,\"volume\":1,\"showGameStatBar\":false,\"gameStatBarType\":\"verbose\",\"speedLimitGearId\":\"3\",\"fabPosition\":{\"x\":0.0006944444444444445,\"y\":0.36203703703703705},\"showMouseStatusGuide\":false,\"enableVolume\":true}"
+}

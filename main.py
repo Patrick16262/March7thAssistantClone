@@ -98,36 +98,48 @@ def run_notify_action():
 
 def main(action=None):
     first_run()
+    retry_times = 0
+    limit = int(cfg.on_failure_retry_limit)
 
+    while True:
     # 完整运行
-    if action is None or action == "main":
-        run_main_actions()
+        try:
+            if action is None or action == "main":
+                run_main_actions()
 
-    # 子任务
-    elif action in ["daily", "power", "fight", "universe", "forgottenhall", "purefiction", "apocalyptic", "redemption"]:
-        run_sub_task(action)
+            # 子任务
+            elif action in ["daily", "power", "fight", "universe", "forgottenhall", "purefiction", "apocalyptic", "redemption"]:
+                run_sub_task(action)
 
-    # 子任务 原生图形界面
-    elif action in ["universe_gui", "fight_gui"]:
-        run_sub_task_gui(action)
+            # 子任务 原生图形界面
+            elif action in ["universe_gui", "fight_gui"]:
+                run_sub_task_gui(action)
 
-    # 子任务 更新项目
-    elif action in ["universe_update", "fight_update"]:
-        run_sub_task_update(action)
+            # 子任务 更新项目
+            elif action in ["universe_update", "fight_update"]:
+                run_sub_task_update(action)
 
-    elif action in ["screenshot", "plot"]:
-        tool.start(action)
+            elif action in ["screenshot", "plot"]:
+                tool.start(action)
 
-    elif action == "game":
-        game.start()
+            elif action == "game":
+                game.start()
 
-    elif action == "notify":
-        run_notify_action()
+            elif action == "notify":
+                run_notify_action()
 
-    else:
-        log.error(f"未知任务: {action}")
-        input("按回车键关闭窗口. . .")
-        sys.exit(1)
+            else:
+                log.error(f"未知任务: {action}")
+                input("按回车键关闭窗口. . .")
+                sys.exit(1)
+
+            break
+        except Exception as e:
+            if retry_times >= limit:
+                raise e
+            log.warning(f"发生错误，正在重启整个任务：{e}")
+            retry_times = retry_times + 1
+            notif.notify(cfg.notify_template['FailureRetry'].format(error=e, times=retry_times, limit=limit))
 
 
 # 程序结束时的处理器
@@ -148,6 +160,8 @@ if __name__ == "__main__":
     except Exception as e:
         log.error(cfg.notify_template['ErrorOccurred'].format(error=e))
         notif.notify(cfg.notify_template['ErrorOccurred'].format(error=e))
+        import traceback
+        traceback.print_exc() #TODO debug
         if not cfg.exit_after_failure:
             input("按回车键关闭窗口. . .")
         sys.exit(1)
