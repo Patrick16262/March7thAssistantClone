@@ -569,7 +569,7 @@ class SettingInterface(ScrollArea):
             FIF.FULL_SCREEN,
             self.tr("全屏运行"),
             None,
-            "cloud_game_full_screen"
+            "cloud_game_fullscreen_enable"
         )
 
         self.cloudGameMaxQueueTimeCard = RangeSettingCard1(
@@ -590,16 +590,16 @@ class SettingInterface(ScrollArea):
 
         self.cloudGameSmoothFirstCard = SwitchSettingCard1(
             FIF.SPEED_HIGH,
-            self.tr("画面流畅优先"),
+            self.tr("云游戏画面流畅优先"),
             "启用这个选项后，当网速过慢时，会自动调低画质",
-            "cloud_game_smooth_first"
+            "cloud_game_smooth_first_enable"
         )
 
         self.cloudGameShowStatusCard = SwitchSettingCardCloudGameStatus(
             FIF.INFO,
             self.tr("云游戏内显示网络状态"),
             None,
-            "cloud_game_show_status_bar",
+            "cloud_game_status_bar_enable",
             "cloud_game_status_bar_type"
         )
         
@@ -607,14 +607,15 @@ class SettingInterface(ScrollArea):
             "browser_type",
             FIF.GLOBE,
             self.tr("浏览器类型"),
-            texts={"Chrome（推荐）": "chrome","Edge": "edge"}
+            self.tr("如果不存在对应浏览器，会自动下载"),
+            {"Chrome（推荐）": "chrome","Edge": "edge"}
         )
 
         self.browserHeadlessCard = SwitchSettingCard1(
             FIF.VIEW,
             self.tr("无界面模式"),
             self.tr("不支持模拟宇宙和锄大地"),
-            "browser_headless_mode"
+            "browser_headless_enable"
         )
         
         self.browserScaleCard = PushSettingCardEval(

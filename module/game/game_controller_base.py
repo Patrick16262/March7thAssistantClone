@@ -113,7 +113,7 @@ class GameControllerBase:
             self.log_error(f"执行系统操作时发生错误：{action}, 错误：{e}")
             return False
 
-    def run_script(self):
+    def run_script(self) -> bool:
         """运行指定的程序或脚本（支持.exe、.ps1和.bat）"""
         if not self.script_path or not isinstance(self.script_path, str) or not os.path.exists(
                 self.script_path):
@@ -158,7 +158,7 @@ class GameControllerBase:
             return False
         
     @staticmethod
-    def set_foreground_window_with_retry(hwnd):
+    def set_foreground_window_with_retry(hwnd) -> None:
         """尝试将窗口设置为前台，失败时先最小化再恢复。"""
 
         def toggle_window_state(hwnd, minimize=False):

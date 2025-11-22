@@ -82,7 +82,7 @@ class Fight:
     @staticmethod
     def start():
         log.hr("准备锄大地", 0)
-        if cfg.cloud_game_enable and cfg.browser_headless_mode:
+        if cfg.cloud_game_enable and cfg.browser_headless_enable:
             log.error("锄大地不支持无界面模式运行")
             return False
 

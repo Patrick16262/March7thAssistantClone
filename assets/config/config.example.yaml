@@ -45,21 +45,26 @@ script_path: C:\Path\to\your\Script.bat
 
 # 云崩铁配置
 cloud_game_enable: True # 是否启动云游戏
-cloud_game_full_screen: True # 云崩铁是否全屏运行
+cloud_game_fullscreen_enable: True # 云崩铁是否全屏运行
 cloud_game_max_queue_time: 10 # 最大排队等待时间（分钟）
 cloud_game_video_quality: '0' # 云崩铁画质 '0'(超高清)，'1'（高清）, '2'（标清）, '3'（低清）
-cloud_game_smooth_first: False # 是否流畅优先
-cloud_game_show_status_bar: False # 是否显示网速
+cloud_game_smooth_first_enable: False # 是否流畅优先
+cloud_game_status_bar_enable: False # 是否显示网速
 cloud_game_status_bar_type: "verbose" # 网速显示类型，可选值 "verbose" (详细), "brief" （简洁）
+# 云游戏无法关闭小浮球，只能将其固定到一个不影响脚本运行的位置
 cloud_game_fab_pos_x: 0.0   # 云游戏小浮球位置（x 坐标）
 cloud_game_fab_pos_y: 0.35  # 云游戏小浮球位置（y 坐标）
 
 # 云崩铁浏览器配置
 browser_type: chrome # 云崩铁使用的浏览器类型，可选值：["edge", "chrome"]，推荐 chrome。
-browser_headless_mode: False # 是否启用无界面模式。
+browser_headless_enable: False # 是否启用无界面模式。
+# 【浏览器隔离模式】为防止浏览器自身配置、插件和数据影响脚本运行，小助手启动的浏览器将与本机的浏览器相互隔离，
+# 不会加载本机浏览器任何数据。浏览器将严格按照预先配置好的数据启动。
+browser_isolation_enable: True # 是否启用浏览器隔离模式，
+browser_isolation_save_data_enbale: False # 隔离模式下，是否允许浏览器保存游戏内配置、浏览器配置、浏览器插件等数据
 browser_scale_factor: 1.0 # 浏览器的缩放比，如果云游戏画面过小/过大，可调整这个选项
 browser_launch_argument: [] # 浏览器启动的额外参数，如 "--auto-open-devtools-for-tabs"
-browser_use_remote: False # 是否使用远程浏览器。可配合 Selenium Grid 实现后台执行模拟宇宙/锄大地
+browser_use_remote: False # 是否使用远程浏览器。
 browser_remote_address: http://localhost:4444/wd/hub # 远程浏览器地址。
 
 # 副本设置

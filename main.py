@@ -147,7 +147,7 @@ def main(action=None):
 def exit_handler():
     """注册程序退出时的处理函数."""
     ocr.exit_ocr() # 清理OCR资源
-    if cfg.cloud_game_enable and cfg.browser_headless_mode:
+    if cfg.cloud_game_enable and cfg.browser_headless_enable:
         cloud_game.stop_game() # 退出云游戏，防止孤儿进程
 
 

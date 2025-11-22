@@ -18,6 +18,7 @@ from module.game.game_controller_base import GameControllerBase
 from module.logger import Logger
 from utils.encryption import wdp_encrypt, wdp_decrypt
 
+# 其实代码上叫“Manager”更好，“Controller”第一眼以为是键盘鼠标这种管理输入设备的类
 class CloudGameController(GameControllerBase):
     COOKIE_PATH = "cookies.encrypted"
     GAME_URL = "https://sr.mihoyo.com/cloud"
@@ -90,7 +91,7 @@ class CloudGameController(GameControllerBase):
         options.add_argument("--log-level=3")
         options.add_argument(f"--force-device-scale-factor={float(self.cfg.browser_scale_factor)}")
         options.add_argument(f"--app={self.GAME_URL}")
-        if self.cfg.cloud_game_full_screen and not self.cfg.browser_headless_mode:
+        if self.cfg.cloud_game_fullscreen_enable and not self.cfg.browser_headless_enable:
             options.add_argument("--start-fullscreen")
             
         # 去掉提示 "浏览器正由自动测试软件控制。"
@@ -112,14 +113,13 @@ class CloudGameController(GameControllerBase):
                 "chrome": webdriver.Chrome,
                 "edge": webdriver.Edge,
             }[browser_type](service=service, options=options)
-                
+
         self.confirm_viewport_resolution()
 
-        self._get_game_page()
         self._load_local_storage()
         self._load_cookies()
         self._refresh_page()
-            
+
     def _restart_browser(self, headless=False):
         """重启浏览器"""
         if self.driver:
@@ -138,14 +138,14 @@ class CloudGameController(GameControllerBase):
 
         # 修改需要同步的字段
         settings = json.loads(data["clgm_web_app_settings_hkrpg_cn"])
-        settings["videoMode"] = self.cfg.cloud_game_smooth_first if 1 else 0
+        settings["videoMode"] = self.cfg.cloud_game_smooth_first_enable if 1 else 0
         data["clgm_web_app_settings_hkrpg_cn"] = json.dumps(settings)
 
         client_config = json.loads(data["clgm_web_app_client_store_config_hkrpg_cn"])
         client_config["speedLimitGearId"] = self.cfg.cloud_game_video_quality
         client_config["fabPosition"]["x"] = self.cfg.cloud_game_fab_pos_x
         client_config["fabPosition"]["y"] = self.cfg.cloud_game_fab_pos_y
-        client_config["showGameStatBar"] = self.cfg.cloud_game_show_status_bar
+        client_config["showGameStatBar"] = self.cfg.cloud_game_status_bar_enable
         client_config["gameStatBarType"] = self.cfg.cloud_game_status_bar_type
         data["clgm_web_app_client_store_config_hkrpg_cn"] = json.dumps(client_config)
 
@@ -292,37 +292,35 @@ class CloudGameController(GameControllerBase):
         self.scripts_to_inject = scripts
         
     #patrick: debug only
-    def dump_page(self, dump_dir="dump"):
-        os.makedirs(dump_dir, exist_ok=True)
-        import datetime
-        # 时间戳
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    def dump_page(self, dump_dir="logs") -> None:
+        if self.driver:
+            os.makedirs(dump_dir, exist_ok=True)
+            from datetime import datetime
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # 保存截图
-        png_path = os.path.join(dump_dir, f"{ts}.png")
-        self.driver.save_screenshot(png_path)
+            png_path = os.path.join(dump_dir, f"{ts}.png")
+            self.driver.save_screenshot(png_path)
 
-        # 保存 HTML
-        html_path = os.path.join(dump_dir, f"{ts}.html")
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(self.driver.page_source)
+            html_path = os.path.join(dump_dir, f"{ts}.html")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(self.driver.page_source)
 
-        print("已保存：", png_path, html_path)
+            self.log_error(f"相关页面和截图已经保存到：{png_path}, {html_path}")
         
-    def start_game(self):
+    def start_game(self) -> bool:
         """启动游戏"""
     
         for attempt in range(self.MAX_RETRIES):
             try:
                 self.stop_game()
-                self._create_browser(headless=self.cfg.browser_headless_mode)
+                self._create_browser(headless=self.cfg.browser_headless_enable)
                 
                 # 检测登录状态
                 while not self._check_login():
                     self.log_info("未登录")
                     
                     # 如果是 headless，则以非 headless 模式重启启动让用户登录
-                    if self.cfg.browser_headless_mode:
+                    if self.cfg.browser_headless_enable:
                         self._restart_browser(headless=False)
                         
                     self.log_info("请在浏览器中完成登录操作")
@@ -337,7 +335,7 @@ class CloudGameController(GameControllerBase):
                     self._save_cookies()
                     
                     # 如果为 headless 模式，则重启浏览器回到 headless 模式
-                    if self.cfg.browser_headless_mode:
+                    if self.cfg.browser_headless_enable:
                         self._restart_browser(headless=True)
                         
                 sleep(0.5)
@@ -361,11 +359,11 @@ class CloudGameController(GameControllerBase):
                     self.log_error("启动云游戏失败，超过最大重试次数。")
                     raise
                 self.log_warning(f"启动云游戏失败（正在重试 {attempt + 1}/{self.MAX_RETRIES}）: {e}")
-                self._restart_browser(headless=self.cfg.browser_headless_mode)
+                self._restart_browser(headless=self.cfg.browser_headless_enable)
 
         return False
     
-    def confirm_viewport_resolution(self):
+    def confirm_viewport_resolution(self) -> None:
         """
         设置网页分辨率大小
         
@@ -379,7 +377,7 @@ class CloudGameController(GameControllerBase):
             "mobile": False
         })
     
-    def take_screenshot(self):
+    def take_screenshot(self) -> bytes:
         """浏览器内截图，不依赖物理显示"""
         if not self.driver:
             return
@@ -389,17 +387,17 @@ class CloudGameController(GameControllerBase):
     def execute_cdp_cmd(self, cmd: str, cmd_args: dict):
         return self.driver.execute_cdp_cmd(cmd, cmd_args)
     
-    def get_window_handle(self):
+    def get_window_handle(self) -> int:
         return self.driver.current_window_handle
     
     def switch_to_game(self) -> bool:
-        if self.cfg.browser_headless_mode:
-            Logger.warning("当前为无界面模式，无法将游戏切换到前台")
+        if self.cfg.browser_headless_enable:
+            self.log_warning("当前为无界面模式，无法将游戏切换到前台")
             return False
         else:
             return super().switch_to_game()
 
-    def stop_game(self):
+    def stop_game(self) -> bool:
         """关闭浏览器"""
         if self.driver:
             try:
