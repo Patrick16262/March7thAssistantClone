@@ -561,7 +561,7 @@ class SettingInterface(ScrollArea):
         )
         self.cloudGameEnableCard = SwitchSettingCard1(
             FIF.SPEED_HIGH,
-            self.tr('使用云·星穹铁道'),
+            self.tr("使用“云·星穹铁道”"),
             "开启后，将改用云·星穹铁道来执行清体力等自动化任务。无需固定窗口，可在后台运行。（模拟宇宙和锄大地仍需保持窗口全屏）",
             "cloud_game_enable"
         )
@@ -608,7 +608,7 @@ class SettingInterface(ScrollArea):
             FIF.GLOBE,
             self.tr("浏览器类型"),
             self.tr("‘集成’ 模式下，会自动下载浏览器"),
-            {"集成（Chromium）": "intergrated", "Chrome": "chrome", "Edge": "msedge"}
+            {"集成（Chrome For Testing）": "intergrated", "Chrome": "chrome", "Edge": "edge"}
         )
 
         self.browserHeadlessCard = SwitchSettingCard1(
@@ -618,16 +618,16 @@ class SettingInterface(ScrollArea):
             "browser_headless_enable"
         )
         
-        self.browserCookiesCard = SwitchSettingCard1(
-            FIF.PALETTE,    # 这个画盘长得很像 Cookie
-            self.tr("保存 Cookies（登录状态）"),
-            None,
-            "browser_cookies_enable"
-        )
+        # self.browserCookiesCard = SwitchSettingCard1(
+        #     FIF.PALETTE,    # 这个画盘长得很像 Cookie
+        #     self.tr("保存 Cookies（登录状态）"),
+        #     None,
+        #     "browser_cookies_enable"
+        # )
         
         self.browserPersistentCard = SwitchSettingCard1(
             FIF.DOWNLOAD,
-            self.tr("保存 Local Storage（云星铁的本地数据）"),
+            self.tr("保存浏览器数据（游戏的登录状态和本地数据）"),
             None,
             "browser_persistent_enable"
         )
@@ -967,7 +967,7 @@ class SettingInterface(ScrollArea):
         # self.CloudGameGroup.addSettingCard(self.cloudGameVideoQualityCard)
         # self.CloudGameGroup.addSettingCard(self.cloudGameSmoothFirstCard)
         # self.CloudGameGroup.addSettingCard(self.cloudGameShowStatusCard)
-        self.CloudGameGroup.addSettingCard(self.browserCookiesCard)
+        # self.CloudGameGroup.addSettingCard(self.browserCookiesCard)
         self.CloudGameGroup.addSettingCard(self.browserPersistentCard)
         self.CloudGameGroup.addSettingCard(self.browserScaleCard)
         self.CloudGameGroup.addSettingCard(self.browserLaunchArgCard)

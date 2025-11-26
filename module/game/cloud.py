@@ -1,350 +1,405 @@
 import atexit
 import os
 import json
-import queue
-import subprocess
-import sys
-import threading
 import psutil
-import win32con
-import win32gui
-import win32process
-from PIL import Image
-from io import BytesIO
 from time import sleep
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError, Error as PlaywrightError
-from playwright.__main__ import main as playwright_main
+from selenium import webdriver
+from selenium.common.exceptions import TimeoutException, SessionNotCreatedException
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.edge.options import Options as EdgeOptions
+from selenium.webdriver.edge.service import Service as EdgeService
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.selenium_manager import SeleniumManager
+from selenium.webdriver.remote.command import Command
+from selenium.common.exceptions import WebDriverException
 
 from module.config import Config
 from module.game.base import GameControllerBase
 from module.logger import Logger
 from utils.encryption import wdp_encrypt, wdp_decrypt
 
-
 class CloudGameController(GameControllerBase):
-    COOKIE_PATH = "settings/cloud/cookies.enc"
-    LOCAL_STORAGE_PATH = "settings/cloud/local_storage.json"
-    GAME_URL = "https://sr.mihoyo.com/cloud"
-    WINDOW_TITLE = "云·星穹铁道"
-    BROWSER_TAG = "--march-7th-assistant-sr-cloud-game" 
-    BROWSER_DOWNLOAD_PATH = os.path.join(os.getcwd(), "3rdparty", "WebBrowser")
-    BROWSER_DATA_PATH = os.path.join(BROWSER_DOWNLOAD_PATH, "UserProfile")
-    MAX_RETRIES = 3  
+    # COOKIE_PATH = "cookies.encrypted"
+    GAME_URL = "https://sr.mihoyo.com/cloud"            # 游戏地址
+    BROWSER_TAG = "--march-7th-assistant-sr-cloud-game" # 自定义浏览器参数作为标识，用于识别哪些浏览器进程属于三月七小助手
+    INTERGRATED_BROWSER_VERSION = "140.0.7339.207"      # 浏览器版本
+    BROWSER_INSTALL_PATH = os.path.join(os.getcwd(), "3rdparty", "WebBrowser") # 浏览器安装路径
+    MAX_RETRIES = 3  # 网页加载重试次数，0=不重试
+    DEBUG_PORT = 9222
 
     def __init__(self, cfg: Config, logger: Logger):
         super().__init__(script_path=cfg.script_path, logger=logger)
         self.driver = None
         self.cfg = cfg
         self.logger = logger
-        self.playwright = None
-        self.context = None
-        self.page = None
-        self.client = None
-        self.browser = None
-        self.hwnd = None
-        self.stop_saving_ls_event = None
-        self.saving_ls_thread = None
-        self.playwright_th_que = queue.Queue()
-        self.playwright_thread = threading.Thread(target=self._playwright_thread_main, name="BrowserAutomationThread", daemon=True)
-        self.playwright_thread.start()
-        # 脚本退出时关闭浏览器，防止 playwright 报错。即使不手动关闭浏览器，playwright 也会在脚本退出时强制关闭。
-        atexit.register(self.stop_game)
+        atexit.register(self._clean_at_exit)
     
-    def _playwright_thread_main(self):
-        while True:
-            func, args, kwargs, future = self.playwright_th_que.get()
-            try:
-                result = func(*args, **kwargs)
-                future["result"] = result
-            except Exception as e:
-                future["exception"] = e
-            finally:
-                future["event"].set()
-
-    def _wait_game_page_loaded(self, timeout=5):
-        if not self.page:
+    def _wait_game_page_loaded(self, timeout=5) -> None:
+        """等待云崩铁网页加载出来，这里以背景图是否加载出来为准"""
+        if not self.driver:
             return
         for retry in range(self.MAX_RETRIES + 1):
             if retry > 0:
-                self.log_warning(f"页面加载超时，正在刷新重试... ({retry}/{self.MAX_RETRIES})")
-                self.page.reload()
+                self.log_warning(f"页面加载超时，正在刷新重试... ({retry + 1}/{self.MAX_RETRIES})")
+                self.driver.refresh()
             try:
-                self.page.wait_for_function(
-                    """() => {
+                WebDriverWait(self.driver, timeout).until(
+                    lambda d: d.execute_script(
+                        """
                         const img = document.querySelector('#app > div.home-wrapper > picture > img');
+                        if (!img) return false;
                         return img && img.complete && img.naturalWidth > 0;
-                    }""",
-                    timeout=timeout*1000
+                        """
+                    )
                 )
                 return
-            except PlaywrightTimeoutError:
+            except TimeoutException:
                 pass
+
         raise Exception("页面加载失败，多次刷新无效。")
 
-    def _prepare_browser(self, browser_type) -> None:
-        subprocess.run([sys.executable, "-m", "playwright", "install", browser_type],
-                    check=True,
-                    env=os.environ.copy())
-
-    def _create_browser(self, headless=False):
-        browser_type = self.cfg.browser_type
-        user_data_dir = os.path.join(self.BROWSER_DATA_PATH, browser_type)
-        os.environ["PLAYWRIGHT_DOWNLOAD_HOST"] = self.cfg.browser_repo_mirror
-        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = self.BROWSER_DOWNLOAD_PATH
-        
-        if browser_type == "intergrated":
-            browser_type = "chromium"
-            self._prepare_browser(browser_type)
-        self.log_info(f"正在启动 {browser_type} 浏览器")
-            
-        browser_args = [
-                self.BROWSER_TAG, # 用于标记是由脚本启动的
-                "--lang=zh-CN", # 浏览器中文
-                f"--force-device-scale-factor={float(self.cfg.browser_scale_factor)}", # 缩放比，画面过大过小可以调节这个值
-                "--disable-blink-features=AutomationControlled" # 去掉自动化痕迹
-            ] + self.cfg.browser_launch_argument
-        if headless:
-            browser_args.append("--mute-audio")
-        
-        self.playwright = sync_playwright().start() 
-        if self.cfg.browser_persistent_enable:
-            # launch_persistent_context 会用到 webdriver，导致出现 “Chrome 正由自动测试软件控制。”，
-            # 这个提示除 Chrome For Testing 外均无法自动化关闭，影响模拟宇宙和锄大地运行
-            # 
-            # self.context = self.playwright.chromium.launch_persistent_context()
-            # self.page = self.context.pages[0]
-            
-            # 定时保存 local storage，保存游戏内配置
-            self.stop_saving_ls_event = threading.Event()
-            self.saving_ls_thread = threading.Thread(
-                target=self._saving_local_storage_task, 
-                name="SavingLocalStorageTask"
-            )
-            self.saving_ls_thread.start()
-        
-        self.browser = self.playwright.chromium.launch(
-            channel=browser_type,                       # 浏览器类型
-            headless=headless,                          # 无窗口模式
-            args=browser_args                           # 其他参数
-        )
-        self.context = self.browser.new_context(
-            viewport={"width": 1920, "height": 1080},   # viewport 大小
-            # permissions=["keyboard-lock"]             # keyboard-lock 权限
-        )
-        self.page = self.context.new_page()
-        self.client = self.context.new_cdp_session(self.page)
-        if self.cfg.cloud_game_fullscreen_enable and not headless:
-            self._full_screen()
-        self.page.goto(self.GAME_URL)
-        self.page.set_viewport_size({"width": 1920, "height": 1080})
-        self._load_local_storage()
-        if self.cfg.browser_cookies_enable:
-            self._load_cookies()
-        self._refresh_page()
-        self.change_window_title(self.WINDOW_TITLE)
-
-    def _restart_browser(self, headless=False):
-        self._stop_game()
-        self._create_browser(headless=headless)
-
-    def _load_local_storage(self) -> bool:
-        if not self.context:
-            return
-        try:
-            ls = {}
+    def _confirm_viewport_resolution(self) -> None:
+        """
+        设置网页分辨率大小
+        """
+        self.driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
+            "width": 1920,
+            "height": 1080,
+            "deviceScaleFactor": 1,
+            "mobile": False
+        })
+    
+    def _prepare_browser_and_driver(self, browser_type: str, intergrated: bool) -> str | str:
+        self.user_profile_path = os.path.join(self.BROWSER_INSTALL_PATH, "UserProfile", self.cfg.browser_type.capitalize())
+        if intergrated:
+            browser_path = os.path.join(self.BROWSER_INSTALL_PATH, "chrome", "win64", self.INTERGRATED_BROWSER_VERSION, "chrome.exe")
+            driver_path = os.path.join(self.BROWSER_INSTALL_PATH, "chromedriver", "win64", self.INTERGRATED_BROWSER_VERSION, "chromedriver.exe")
+            if not os.path.exists(browser_path) or not os.path.exists(driver_path):
+                self.log_info("正在下载浏览器和驱动...")
+                args = ["--browser", browser_type,
+                        "--cache-path", self.BROWSER_INSTALL_PATH,
+                        "--browser-version", self.INTERGRATED_BROWSER_VERSION,
+                        "--force-browser-download"]
+                try:
+                    SeleniumManager().binary_paths(args)
+                except WebDriverException as e:
+                    raise Exception(f"浏览器和驱动下载失败：{e}")
+        else:
+            # 尝试在本地查找浏览器
+            args = ["--browser", browser_type,
+                    "--cache-path", self.BROWSER_INSTALL_PATH,
+                    "--avoid-browser-download"]
             try:
-                with open(self.LOCAL_STORAGE_PATH, "r", encoding="utf-8") as f:
-                    ls = json.load(f)
-            except FileNotFoundError:
-                self.log_info("未找到 Local Storage 文件")
-                # 加载初始 local_storage，去掉首次运行的弹窗
-                with open("assets/config/initial_local_storage.json", "r", encoding="utf-8") as f:
-                    ls = json.load(f)
-            
-            # 修改云游戏设置
-            # settings = json.loads(ls["clgm_web_app_settings_hkrpg_cn"])
-            # settings["videoMode"] = 1 if self.cfg.cloud_game_smooth_first_enable else 0
-            # ls["clgm_web_app_settings_hkrpg_cn"] = json.dumps(settings)
+                result = SeleniumManager().binary_paths(args)
+            except WebDriverException as e:
+                raise Exception(f"查找 {browser_type} 浏览器出错：{e}")
+            browser_path = result["browser_path"]
+            driver_path = result["driver_path"]
+        return browser_path, driver_path
+    
+    def _get_browser_arguments(self, headless) -> list[str]:
+        args = [
+            self.BROWSER_TAG,   # 标记浏览器是由脚本启动
+            "--disable-infobars",   # 去掉提示 "Chrome测试版仅适用于自动测试。" 和 "浏览器正由自动测试软件控制。"
+            "--lang=zh-CN",     # 浏览器语言中文
+            "--log-level=3",    # 浏览器日志等级为error
+            f"--force-device-scale-factor={float(self.cfg.browser_scale_factor)}",  # 设置缩放
+            f"--app={self.GAME_URL}",   # 以应用模式启动
+            "--disable-blink-features=AutomationControlled",  # 去除自动化痕迹，防止被人机验证
+            f"--remote-debugging-port=9222",   # 调试端口，可用于复用浏览器
+        ]
+        if self.cfg.browser_persistent_enable:
+            args += [
+                f"--user-data-dir={self.user_profile_path}",   # UserProfile 路径
+                "--profile-directory=Default",            # UserProfile 名称
+            ]
+        if headless:
+            args += [
+                "--headless=new",  # 无窗口模式
+                "--mute-audio",    # 后台静音
+            ]
+        if self.cfg.cloud_game_fullscreen_enable and not headless:
+            args.append("--start-fullscreen")  # 全屏启动
+        args.extend(self.cfg.browser_launch_argument) # 用户自定义参数
+        return args
 
-            client_config = json.loads(ls["clgm_web_app_client_store_config_hkrpg_cn"])
+    def _connect_or_create_browser(self, headless=False) -> None:
+        """尝试连接到现有的（由小助手启动的）浏览器，如果没有，那就创建一个"""
+        browser_type = "chrome" if self.cfg.browser_type in ["intergrated", "chrome"] else "edge"
+        intergrated = self.cfg.browser_type=="intergrated"
+        first_run = False
+        browser_path, driver_path = self._prepare_browser_and_driver(browser_type, intergrated)
+        
+        if not os.path.exists(self.user_profile_path):
+            first_run = True
+        
+        if browser_type == "chrome":
+            options = ChromeOptions()
+            service = ChromeService(executable_path=driver_path, log_path=os.devnull)
+            webdriver_type = webdriver.Chrome
+        else: #edge
+            options = EdgeOptions()
+            service = EdgeService(executable_path=driver_path, log_path=os.devnull)
+            webdriver_type = webdriver.Edge
+        
+        if self.get_m7a_browsers():
+            # 如果发现已经有浏览器，尝试直接连接
+            try:
+                options.debugger_address = f"127.0.0.1:{self.DEBUG_PORT}"
+                self.driver = webdriver_type(service=service, options=options)
+                self.log_info("已连接到现有浏览器")
+                return # 连接成功，直接返回
+            except Exception:
+                self.log_info(f"连接现有浏览器失败")
+                self.close_all_m7a_browser() # 连接失败，关闭浏览器
+                options = None
+            
+        self.log_info(f"正在启动 {browser_type} 浏览器")
+        prefs = {"profile": {"content_settings": {"exceptions": {"keyboard_lock": {"https://sr.mihoyo.com:443 ,*": {"setting": 1}}}}}}
+        options.binary_location = browser_path
+        options.add_experimental_option("prefs", prefs)  # 允许 keyboard_lock 权限
+
+        # 设置浏览器启动参数
+        for arg in self._get_browser_arguments(headless=headless):
+            options.add_argument(arg)
+        
+        try:
+            self.driver = webdriver_type(service=service, options=options)
+        except SessionNotCreatedException as e:
+            self.log_error(f"浏览器启动失败: {e}")
+            self.log_error("请去掉所有浏览器启动参数后重试，如果仍然存在问题，请更换浏览器重试")
+            raise Exception("浏览器启动失败")
+        
+        if first_run or not self.cfg.browser_persistent_enable:
+            self._load_initial_local_storage()
+        self._refresh_page()
+
+    def _restart_browser(self, headless=False) -> None:
+        """重启浏览器"""
+        self.stop_game()
+        self._connect_or_create_browser(headless=headless)
+    
+    def _load_initial_local_storage(self) -> bool:
+        """加载初始配置，去除初始引导，免责协议等弹窗"""
+
+        try:
+            with open("assets/config/initial_local_storage.json", "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # settings = json.loads(data["clgm_web_app_settings_hkrpg_cn"])
+            # settings["videoMode"] = self.cfg.cloud_game_smooth_first_enable if 1 else 0
+            # data["clgm_web_app_settings_hkrpg_cn"] = json.dumps(settings)
+
+            # client_config = json.loads(data["clgm_web_app_client_store_config_hkrpg_cn"])
             # client_config["speedLimitGearId"] = self.cfg.cloud_game_video_quality
-            client_config["fabPosition"]["x"] = self.cfg.cloud_game_fab_pos_x # 设置小浮球坐标
-            client_config["fabPosition"]["y"] = self.cfg.cloud_game_fab_pos_y
+            # client_config["fabPosition"]["x"] = self.cfg.cloud_game_fab_pos_x
+            # client_config["fabPosition"]["y"] = self.cfg.cloud_game_fab_pos_y
             # client_config["showGameStatBar"] = self.cfg.cloud_game_status_bar_enable
             # client_config["gameStatBarType"] = self.cfg.cloud_game_status_bar_type
-            ls["clgm_web_app_client_store_config_hkrpg_cn"] = json.dumps(client_config)
+            # client_config["volume"] = self.cfg.browser_headless_enable if 0 else 1
+            # data["clgm_web_app_client_store_config_hkrpg_cn"] = json.dumps(client_config)
 
-            for key, value in ls.items():
-                self.context.add_init_script(
-                    f'window.localStorage.setItem("{key}", {json.dumps(value)});'
+            # 注入浏览器
+            for key, value in data.items():
+                self.driver.execute_script(
+                    "window.localStorage.setItem(arguments[0], arguments[1]);",
+                    key,
+                    value,
                 )
+            self.log_info("加载初始配置成功")
             return True
         except Exception as e:
-            self.log_error(f"加载 Local Storage 失败: {e}")
+            self.log_error(f"加载初始配置失败 {e}")
             return False
+
+    # def _save_cookies(self) -> bool:
+    #     """保存登录信息""" 
+    #     if not self.driver:
+    #         return
+    #     try:
+    #         cookies_json = json.dumps(self.driver.get_cookies(), ensure_ascii=False, indent=4)
+    #         with open(self.COOKIE_PATH, "wb") as f:
+    #             f.write(wdp_encrypt(cookies_json.encode()))
+    #         self.log_info("登录信息保存成功。")
+    #     except Exception as e:
+    #         self.log_error(f"保存 cookies 失败: {e}")
+
+    # def _load_cookies(self) -> bool:
+    #     """加载登录信息"""
+    #     if not self.driver:
+    #         return False
+    #     try:
+    #         with open(self.COOKIE_PATH, "rb") as f:
+    #             cookies = json.loads(wdp_decrypt(f.read()).decode())
+
+    #         for cookie in cookies:
+    #             try:
+    #                 self.driver.add_cookie(cookie)
+    #             except Exception:
+    #                 pass  # 忽略无效 cookie
+
+    #         self.driver.refresh()
+    #         self.log_info("登录信息加载成功。")
+    #         return True
+    #     except FileNotFoundError:
+    #         self.log_info("cookies 文件不存在。")
+    #         return False
+    #     except Exception as e:
+    #         self.log_error(f"加载 cookies 失败: {e}")
+    #         return False
     
-    def _saving_local_storage_task(self, interval=10):
-        """
-        将当前页面的 local storage 导出到文件。
-        """
-        while not self.stop_saving_ls_event.is_set():
-            if self.page and not self.page.is_closed():
-                try:
-                    local_storage_json = self.run_in_playwright_thread(self.page.evaluate, "JSON.stringify(window.localStorage, null, 4)")
-                    os.makedirs(os.path.dirname(self.LOCAL_STORAGE_PATH), exist_ok=True)
-                    with open(self.LOCAL_STORAGE_PATH, 'w', encoding='utf-8') as f:
-                        f.write(local_storage_json)
+    def _refresh_page(self) -> None:
+        if self.driver:
+            self.driver.refresh()
+            self._wait_game_page_loaded()
 
-                    self.log_debug(f"Local Storage 已保存到 {self.LOCAL_STORAGE_PATH}")
-                except Exception as e:
-                    self.log_debug(f"Local Storage 保存失败 {e}")
-            
-            self.stop_saving_ls_event.wait(interval)
-            
-
-    def _load_cookies(self) -> bool:
-        """加载 Cookies 登录信息"""
-        try:
-            with open(self.COOKIE_PATH, "rb") as f:
-                cookies = json.loads(wdp_decrypt(f.read()).decode())
-            self.context.add_cookies(cookies)
-            self.log_info("Cookies（登录状态）加载成功。")
-            return True
-        except FileNotFoundError:
-            self.log_info("cookies 文件不存在。")
-            return False
-        except Exception as e:
-            self.log_error(f"加载 cookies 失败: {e}")
-            return False
-        
-    def _save_cookies(self):
-        """保存 Cookies 登录信息"""
-        try:
-            cookies = self.context.cookies()
-            os.makedirs(os.path.dirname(self.COOKIE_PATH), exist_ok=True)
-            with open(self.COOKIE_PATH, "wb") as f:
-                f.write(wdp_encrypt(json.dumps(cookies).encode()))
-            self.log_info("登录信息保存成功。")
-        except Exception as e:
-            self.log_error(f"保存 cookies 失败: {e}")
-
-    def _refresh_page(self):
-        self.page.reload()
-        self._wait_game_page_loaded()
-
-    def change_window_title(self, titile):
-        """修改浏览器标题为 '云·星穹铁道' 适配模拟宇宙"""
-        try:
-            # 适配模拟宇宙
-            win32gui.SetWindowText(self.get_window_handle(), titile)
-        except Exception as e:
-            print("win32gui.SetWindowText 抛出异常:", e)
-
-    def _full_screen(self):
-        """强制浏览器窗口全屏"""
-        try:
-            window_info = self.client.send("Browser.getWindowForTarget")
-            window_id = window_info["windowId"]
-            self.client.send("Browser.setWindowBounds", {
-                "windowId": window_id,
-                "bounds": {"windowState": "fullscreen"}
-            })
-        except Exception as e:
-            self.log_warning(f"全屏失败 {e}")
-
-    def _check_login(self, timeout=5):
-        """检查是否登录"""
-        logged_in_selector = "div.user-aid.wel-card__aid"
-        not_logged_in_selector = "#mihoyo-login-platform-iframe"
-        try:
-            self.page.wait_for_selector(f"{logged_in_selector}, {not_logged_in_selector}", timeout=timeout*1000)
-            if self.page.query_selector(logged_in_selector):
-                return True
-            if self.page.query_selector(not_logged_in_selector):
-                return False
+    def _check_login(self, timeout=5) -> bool:
+        """检查是否已经登录"""
+        if not self.driver:
             return None
-        except PlaywrightTimeoutError:
+        
+        logged_in_selector = "div.user-aid.wel-card__aid, .game-player, [class*='waiting-in-queue']"
+        not_logged_in_id = "mihoyo-login-platform-iframe"
+
+        try:
+            state = WebDriverWait(self.driver, timeout).until(
+                lambda d: (
+                    "logged_in"
+                    if d.find_elements(By.CSS_SELECTOR, logged_in_selector)
+                    else (
+                        "not_logged_in"
+                        if d.find_elements(By.ID, not_logged_in_id)
+                        else None
+                    )
+                )
+            )
+
+            return state == "logged_in"
+        except TimeoutException:
             self.log_warning("检测登录状态超时：未出现登录或未登录标志元素")
             return None
-
-    def _click_enter_game(self, timeout=5):
-        """通过 js 点击网页‘开始游戏’按钮"""
+            
+    def _click_enter_game(self, timeout=5) -> None:
+        """
+        点击‘进入游戏’按钮。
+        """
+        if not self.driver:
+            return
+        
+        game_selector = ".game-player"
         enter_button_selector = "div.wel-card__content--start"
         try:
-            btn = self.page.wait_for_selector(enter_button_selector, timeout=timeout * 1000)
-            self.page.evaluate("(el) => el.click()", btn)
+            if self.driver.find_elements(By.CSS_SELECTOR, game_selector):
+                self.log_info("已在游戏中")
+                return 
+            enter_button = WebDriverWait(self.driver, timeout).until(
+                EC.visibility_of_element_located((By.CSS_SELECTOR, enter_button_selector))
+            )
+            self.driver.execute_script("arguments[0].click();", enter_button)
         except Exception as e:
             self.log_error(f"点击进入游戏按钮游戏异常: {e}")
             raise e
-
+        
     def _wait_in_queue(self, timeout=600) -> bool:
-        """排队等待"""
+        """排队等待进入"""
         in_queue_selector = "[class*='waiting-in-queue']"
-        cloud_game_Selector = "video"
+        cloud_game_selector = ".game-player"
         
         try:
-            self.page.wait_for_selector(f"{cloud_game_Selector}, {in_queue_selector}", timeout=10 * 1000)
-            if self.page.wait_for_selector(cloud_game_Selector, timeout=100):
+            # 检查是否需要排队
+            status = WebDriverWait(self.driver, 10).until(
+                lambda d: d.execute_script("""
+                    if (document.querySelector(arguments[0])) return "game_running";
+                    else if (document.querySelector(arguments[1])) return "in_queue";
+                    else return null;
+                """, cloud_game_selector, in_queue_selector)
+            )
+
+            if status == "game_running":
                 self.log_info("游戏已启动，无需排队")
                 return True
-            elif self.page.wait_for_selector(in_queue_selector, timeout=100):
+            elif status == "in_queue":
+                self.log_info("正在排队...")
                 try:
-                    self.page.wait_for_selector(in_queue_selector, state="hidden", timeout=timeout*1000)
+                    WebDriverWait(self.driver, timeout).until(
+                        EC.invisibility_of_element_located((By.CSS_SELECTOR, in_queue_selector))
+                    )
                     self.log_info("排队成功，正在进入游戏")
-                except PlaywrightTimeoutError as e:
-                    self.log_error("等待排队超时")
+                    return True
+                except TimeoutException:
+                    self.log_error("排队超时")
                     return False
-                return True
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             self.log_error(f"等待排队异常: {e}")
-            raise e
-
-    def _try_dump_page(self, dump_dir="logs") -> None:
-        """导出当前页面"""
-        try:
+            return False
+    
+    def _clean_at_exit(self) -> None:
+        """当脚本退出时，关闭所有 headless 浏览器"""
+        if self.cfg.browser_headless_enable:
+            if self.close_all_m7a_browser(headles=True):
+                self.log_info("已关闭所有后台浏览器")
+    
+    def get_m7a_browsers(self, headless=None) -> list[psutil.Process]:
+        """
+        获取由小助手打开的浏览器
+        headles: None 所有，True 仅 headless 无窗口浏览器，False 仅有窗口浏览器
+        
+        return 浏览器的 Process
+        """
+        all_proc = []
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            if proc.info['name'] in ('chrome.exe', 'msedge.exe'):
+                cmdline = proc.info['cmdline']
+                if self.BROWSER_TAG in cmdline and (headless is None or (headless and "--headless=new" in cmdline)):
+                    all_proc.append(proc)
+        return all_proc
+                    
+    def close_all_m7a_browser(self, headles=None) -> list[psutil.Process]:
+        """
+        关闭所有由小助手打开的浏览器
+        headles: None 所有，True 仅 headless 无窗口浏览器，False 仅 headful 有窗口浏览器
+        
+        return 被关闭浏览器的 Process
+        """
+        closed_proc = []
+        for proc in self.get_m7a_browsers(headless=headles) or []:
+            proc.terminate()
+        return closed_proc
+        
+    def try_dump_page(self, dump_dir="logs/webdump") -> None:
+        if self.driver:
+            os.makedirs(dump_dir, exist_ok=True)
             from datetime import datetime
-            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-            self.page.screenshot(path=os.path.join(dump_dir, f"{ts}.png"))
+            ts = datetime.now().strftime("%Y-%m-%d_%H:%M:%S")
+
+            png_path = os.path.join(dump_dir, f"{ts}.png")
+            self.driver.save_screenshot(png_path)
+
             html_path = os.path.join(dump_dir, f"{ts}.html")
             with open(html_path, "w", encoding="utf-8") as f:
-                f.write(self.page.content())
-            self.log_info(f"相关页面和截图已经保存到：{dump_dir}")
-        except Exception as e:
-            pass
+                f.write(self.driver.page_source)
+
+            self.log_error(f"相关页面和截图已经保存到：{dump_dir}")
     
-    def _take_screenshot(self) -> bytes:
-        """浏览器内截图"""
-        if (not self.cfg.browser_headless_enable and 
-                win32gui.GetWindowPlacement(self.get_window_handle())[1] == win32con.SW_SHOWMINIMIZED):
-            self.log_warning("浏览器无法在最小化时截图，正在将窗口从最小化中恢复")
-            win32gui.ShowWindow(self.hwnd, win32con.SW_RESTORE)
-        return self.page.screenshot()
+    def start_game_process(self) -> bool:
+        """启动游戏进程"""
+        try:
+            self._connect_or_create_browser(headless=self.cfg.browser_headless_enable)
+            self._confirm_viewport_resolution()
+            return True
+        except Exception as e:
+            self.log_error(f"浏览器启动失败 {e}")
+            return False 
         
-    def _stop_game(self) -> bool:
-        """停止游戏，关闭浏览器"""
+    def enter_cloud_game(self) -> bool:
+        """进入云游戏"""
         try:
-            if self.stop_saving_ls_event:
-                self.stop_saving_ls_event.set()
-            if self.saving_ls_thread and self.saving_ls_thread.is_alive():
-                self.saving_ls_thread.join()
-            if self.playwright:
-                self.playwright.stop()
-                self.log_info("浏览器关闭成功")
-            self.hwnd = None
-            self.context = None
-            self.page = None
-            self.client = None   
-            self.browser = None
-            self.playwright = None
-        except Exception as e:
-            self.log_error(f"退出浏览器异常: {e}")
-    
-    def _start_game(self) -> bool:
-        """启动游戏"""
-    
-        try:
-            self._stop_game()
-            self._create_browser(headless=self.cfg.browser_headless_enable)
+            self._connect_or_create_browser(headless=self.cfg.browser_headless_enable)
             
             # 检测登录状态
             while not self._check_login():
@@ -364,81 +419,64 @@ class CloudGameController(GameControllerBase):
                 
                 # 如果为 headless 模式，则重启浏览器回到 headless 模式
                 if self.cfg.browser_headless_enable:
-                    if self.cfg.browser_cookies_enable:
-                        self._save_cookies()
                     self._restart_browser(headless=True)
-            
-            if self.cfg.browser_cookies_enable:
-                self._save_cookies()
+                    
             self._click_enter_game()
             if not self._wait_in_queue(int(self.cfg.cloud_game_max_queue_time) * 60):
                 return False
+            self._confirm_viewport_resolution() # 将浏览器内部分辨率设置为 1920x1080
             
-            self.log_info("云游戏启动成功")
+            self.log_info("进入云游戏成功")
             return True 
         except Exception as e:
-            self.log_error(f"云游戏启动失败: {e}")
-            self._try_dump_page()
+            self.try_dump_page()
+            self.log_error(f"进入云游戏失败: {e}")
+            import traceback
+            traceback.print_exc() #TODO patrick: debug
             return False
     
-    def run_in_playwright_thread(self, func, *args, **kwargs):
-        """sync playwright 只允许一个线程来操作，相关的任务都须通过这个函数执行"""
-        future = {"event": threading.Event()}
-        self.playwright_th_que.put((func, args, kwargs, future))
-        future["event"].wait()
-
-        if "exception" in future:
-            raise future["exception"]
-
-        return future["result"]
-        
+    def take_screenshot(self) -> bytes:
+        """浏览器内截图"""
+        if not self.driver:
+            return None
+        png = self.driver.get_screenshot_as_png()
+        return png
+    
+    def execute_cdp_cmd(self, cmd: str, cmd_args: dict):
+        return self.driver.execute_cdp_cmd(cmd, cmd_args)
+    
     def get_window_handle(self) -> int:
-        """查找浏览器的 HWND"""
-        if self.hwnd and not self.page.is_closed():
-            return self.hwnd
-        elif self.page.is_closed():
-            return 0
-        
-        target_pid = None
-
-        # 查找浏览器的 PID
-        for proc in psutil.process_iter(['pid', 'cmdline']):
-            try:
-                if proc.info['cmdline'] and any(self.BROWSER_TAG in arg for arg in proc.info['cmdline']):
-                    target_pid = proc.pid
-                    break
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-        if target_pid is None:
-            return 0
-
-        # 查找浏览器的 HWND
-        hwnds = []
-        def callback(hwnd, _):
-            _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
-            if found_pid == target_pid and win32gui.IsWindowVisible(hwnd):
-                hwnds.append(hwnd)
-        win32gui.EnumWindows(callback, None)
-        self.hwnd = hwnds[0] if hwnds else 0
-        
-        return self.hwnd
-
+        return self.driver.current_window_handle
+    
     def switch_to_game(self) -> bool:
         if self.cfg.browser_headless_enable:
-            self.log_warning("当前为无窗口模式，无法将游戏切换到前台")
+            self.log_warning("游戏切换至前台失败：当前为无窗口模式")
             return False
         else:
             return super().switch_to_game()
-        
+    
     def get_input_handler(self):
-        from module.automation.browser_input import BrowserInput
-        return BrowserInput(cloud_game=self, logger=self.logger)
-
-    def take_screenshot(self) -> bytes:
-        return self.run_in_playwright_thread(self._take_screenshot)
+        from module.automation.cdp_input import CdpInput
+        return CdpInput(cloud_game=self, logger=self.logger)
 
     def stop_game(self) -> bool:
-        return self.run_in_playwright_thread(self._stop_game)
-
-    def start_game(self) -> bool:
-        return self.run_in_playwright_thread(self._start_game)
+        """退出游戏，关闭浏览器"""
+        if self.driver:
+            try:
+                self.driver.execute(Command.CLOSE)
+                self.log_info("关闭浏览器成功")
+            except Exception:
+                pass
+            self.driver.quit()
+            self.driver = None
+            
+        # 清理所有未正常退出的浏览器
+        try:
+            if self.close_all_m7a_browser():
+                self.log_info("检测到由小助手启动的浏览器，已成功关闭")
+        except Exception as e:
+            self.log_warning(f"检测到由小助手启动的浏览器，关闭失败: {e}")
+            return False
+        
+        return True
+            

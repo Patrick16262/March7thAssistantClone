@@ -33,8 +33,8 @@ class GameControllerBase:
             self.logger.warning(message)
 
     @abstractmethod
-    def start_game(self) -> bool:
-        """启动游戏"""
+    def start_game_process(self) -> bool:
+        """启动游戏进程"""
         ...
 
     @abstractmethod

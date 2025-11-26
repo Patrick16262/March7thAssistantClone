@@ -10,14 +10,14 @@ from .starrailcontroller import StarRailController
 
 from utils.date import Date
 from tasks.power.power import Power
-from module.game import cloud_game
+from module.game import cloud_game, get_game_controller
 from module.logger import log
 from module.screen import screen
 from module.automation import auto
 from module.config import cfg
 from module.notification import notif
 from module.ocr import ocr
-
+from module.screen import screen
 
 starrail = StarRailController(cfg=cfg, logger=log)
 
@@ -69,8 +69,8 @@ def start_game():
                 auto_login_os()
         return False
     
-    def check_and_click_enter_cloud():
-        if auto.click_element("./assets/images/screen/click_enter.png", "image", 0.9):
+    def cloud_game_check_and_enter():
+        if screen.get_current_screen(max_retries=1):
             return True
         # 同意浏览器授权
         if auto.click_element("./assets/images/screen/cloud/agree_to_authorize.png", "image", 0.9, take_screenshot=False):
@@ -114,7 +114,7 @@ def start_game():
             if cfg.auto_battle_detect_enable:
                 starrail.change_auto_battle(True)
 
-            if not starrail.start_game():
+            if not starrail.start_game_process():
                 raise Exception("启动游戏失败")
             time.sleep(10)
 
@@ -145,10 +145,10 @@ def start_game():
             raise TimeoutError("获取当前界面超时")
 
     def start_cloud_game():
-        if not cloud_game.start_game():
+        if not cloud_game.enter_cloud_game():
             raise Exception("启动云游戏失败")
 
-        if not wait_until(lambda: check_and_click_enter_cloud(), 600):
+        if not wait_until(lambda: cloud_game_check_and_enter(), 600):
             raise TimeoutError("查找并点击进入按钮超时")
 
     for retry in range(MAX_RETRY):
@@ -190,7 +190,7 @@ def stop(detect_loop=False):
         if detect_loop:
             notify_after_finish_not_loop()
         if cfg.after_finish in ["Exit", "Loop", "Shutdown", "Sleep", "Hibernate", "Restart", "Logoff", "RunScript"]:
-            starrail.shutdown(cfg.after_finish)
+            get_game_controller().shutdown(cfg.after_finish)
         log.hr("完成", 2)
         if cfg.after_finish not in ["Shutdown", "Sleep", "Hibernate", "Restart", "Logoff", "RunScript"]:
             if cfg.pause_after_success:

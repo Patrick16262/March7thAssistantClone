@@ -15,7 +15,7 @@ class LocalGameController(GameControllerBase):
         self.window_name = cfg.game_title_name
         self.window_class = 'UnityWndClass'
 
-    def start_game(self) -> bool:
+    def start_game_process(self) -> bool:
         """启动游戏"""
         if not os.path.exists(self.game_path):
             self.log_error(f"游戏路径不存在：{self.game_path}")

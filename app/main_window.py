@@ -125,7 +125,7 @@ class MainWindow(MSFluentWindow):
     def startGame(self):
         game = get_game_controller()
         try:
-            if game.start_game():
+            if game.start_game_process():
                 InfoBar.success(
                     title=self.tr('启动成功(＾∀＾●)'),
                     content="",
